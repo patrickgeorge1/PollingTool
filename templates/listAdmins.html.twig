@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}List Admins!{% endblock %}</title>
+    {% block stylesheets %}{% endblock %}
+</head>
+<body>
+{% block body %}
+    {% for admin in admins %}
+        <h1>{{ admin.email }}</h1><br />
+    {% endfor %}
+{% endblock %}
+{% block javascripts %}{% endblock %}
+</body>
+</html>
