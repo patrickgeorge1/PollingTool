@@ -142,6 +142,8 @@ class UsersController extends AbstractController
      * @Route("/user/homepage/poll/create", name="poll_create", methods={"GET", "POST"})
      */
     public function pollCreate(PollsRepository $pollsRepository, Request $request) : Response {
+        // prevent accessing the route without priviledge protection
+
         // add a basic pool
         $title = $request->get('title');
         $yesVotes = 0;
@@ -171,6 +173,8 @@ class UsersController extends AbstractController
      * @Route("/user/homepage/poll/delete", name="poll_delete", methods={"GET", "POST"})
      */
     public function pollDelete(Request $request, PollsRepository $pollsRepository) {
+        // prevent accessing the route without priviledge protection
+
         // trag numele articolului pe care vreu sa l sterg
         $toDelete = $request->get("target");
 
@@ -185,5 +189,16 @@ class UsersController extends AbstractController
         return new Response("done");
     }
 
+    /**
+     * @Route("/user/homepage/poll/voteYes", name="poll_voteYes", methods={"GET", "POST"})
+     */
+    public function voteYes(Request $request) : Response {
+        // prevent accessing the route without priviledge protection
 
+        // pull data from post request
+        $pollTitle = $request->get("target");
+        $pollActor = $request->get("actor");
+
+
+    }
 }

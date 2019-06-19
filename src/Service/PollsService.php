@@ -6,11 +6,11 @@ namespace App\Service;
 
 class PollsService
 {
-    public function voteYes () {
+    public function voteYes (PollsRepository $pollsRepository, $title) {
 
     }
 
-    public function  voteNo () {
+    public function  voteNo (PollsRepository $pollsRepository, $title) {
 
     }
 }
