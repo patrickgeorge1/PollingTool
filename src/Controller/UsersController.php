@@ -9,6 +9,7 @@ use App\Repository\UsersRepository;
 use App\Repository\VotesRepository;
 use App\Service\PollsService;
 use App\Service\UsersService;
+use App\Service\VotesService;
 use Doctrine\ORM\EntityManagerInterface;
 use http\Client\Curl\User;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -28,6 +29,8 @@ class UsersController extends AbstractController
         $this->poolService = $poolService;
     }
 
+
+
     /**
      * @Route("/", name="home", methods={"POST", "GET"})
      */
@@ -35,36 +38,49 @@ class UsersController extends AbstractController
         return $this->render(__FUNCTION__.".html.twig");
     }
 
+
+
     /**
      *
-     * @Route("/user/add", name="users_add", methods={"GET", "POST"})
+     * @Route("/user/add/{key}", name="users_add", methods={"GET", "POST"})
      */
-    public function add(Request $request, UsersService $usersService): Response
+    public function add(Request $request, UsersService $usersService, UsersRepository $usersRepository, $key): Response
     {
+        // register a admin or user
+        if ($key == 777) $adminStatus = true;
+        else $adminStatus = false;
+        $email = $request->get("email");
 
-        $adminStatus = true;
-
-        $newUser = new Users();
-        $newUser->setEmail($request->get('email'));
-        if ($request->get("confirmPassword") != null)
-            if ($usersService->verifyPassword($request->get("password"), $request->get("confirmPassword")))
-                $newUser->setPassword(sha1($request->get("password")));
+        // check if already exists in database
+        if($usersRepository->findOneBy(["email"=>$email]) == null)
+        {
+            // set new user
+            $newUser = new Users();
+            $newUser->setEmail($request->get('email'));
+            if ($request->get("confirmPassword") != null)
+                if ($usersService->verifyPassword($request->get("password"), $request->get("confirmPassword")))
+                    $newUser->setPassword(sha1($request->get("password")));
+                else
+                    return new Response("Invalid Password");
             else
-                return new Response("Invalid Password");
-        else
-            return new Response("Confirm pass");
-        $newUser->setIsAdmin($adminStatus);
+                return new Response("Confirm pass");
+            $newUser->setIsAdmin($adminStatus);
 
-        try {
-            $this->entityManager->persist($newUser);
-            $this->entityManager->flush();
-        } catch (\Exception $exception) {
-            return new Response($exception->getMessage());
+            // put the new user to database
+            try {
+                $this->entityManager->persist($newUser);
+                $this->entityManager->flush();
+            } catch (\Exception $exception) {
+                return new Response($exception->getMessage());
+            }
+
+            //return new Response($request->getClientIp());
+            return $this->render(__FUNCTION__ . ".html.twig");
         }
-
-        //return new Response($request->getClientIp());
-        return $this->render(__FUNCTION__ . ".html.twig");
+        else return new Response("Already a user with this email, go back..");
     }
+
+
 
     /**
      *
@@ -73,26 +89,12 @@ class UsersController extends AbstractController
     public function listAdmins(UsersRepository $usersRepository, Session $session, Request $request): Response
     {
         $adminArray = $usersRepository->findBy(["isAdmin" => true]);
-        // daca nu gaseste nimic returneazza array gol
-        // if (count($adminArray) == 0 ) gol
-
-        $user = $usersRepository->findOneBy(["email" => $request->get("email"), "password" => sha1($request->get("password"))]);
-        //        // daca nu gaseste nimic returneazza null
-        // if ($user == null ) gol
-/*
-        //functie logare
-        $session->set('user_id', $user->getId());  // in loc de 5 am id lui din db dupa match mail
-
-        //in fiecare ruta cu drepturi de acces
-        if($session->get('user_id')) {
-            $usersRepository->find($session->get('user_id'));
-        } $this->>redirectToRoute("nume_ruta");
-*/
         return $this->render(__FUNCTION__ . '.html.twig', [
             'admins' => $adminArray
         ]);
-
     }
+
+
 
     /**
      * @Route("/login", name="login", methods={"GET", "POST"})
@@ -122,6 +124,9 @@ class UsersController extends AbstractController
         }  // succesfully logged
     }
 
+
+
+
     /**
      * @Route("/user/homepage", name="homepage", methods={"GET", "POST"})
      *
@@ -142,15 +147,17 @@ class UsersController extends AbstractController
     /**
      * @Route("/user/homepage/poll/create", name="poll_create", methods={"GET", "POST"})
      */
-    public function pollCreate(PollsRepository $pollsRepository, Request $request) : Response {
+    public function pollCreate(PollsRepository $pollsRepository, Session $session, Request $request, UsersRepository $usersRepository) : Response {
         // prevent accessing the route without priviledge protection
 
         // add a basic pool
         $title = $request->get('title');
         $yesVotes = 0;
         $noVotes  = 0;
-        $status   = true;
-        $author = $request->get("user_email");
+        $status   = 1;
+        $author = $session->get("user_id");
+        $user = $usersRepository->findOneBy(["id"=>$author]);
+
 
         // check if poll already exists
         $poll_duplicates = $pollsRepository->findOneBy(array("title" => $title));
@@ -159,7 +166,7 @@ class UsersController extends AbstractController
             $newPoll->setTitle($title);
             $newPoll->setNoVote($noVotes);
             $newPoll->setYesVote($yesVotes);
-            $newPoll->setAuthor($author);
+            $newPoll->setUser($user);
             $newPoll->setStatus($status);
 
             // add to database
@@ -170,13 +177,15 @@ class UsersController extends AbstractController
         return new Response("Poll ".$title." has been created!");
     }
 
+
+
     /**
      * @Route("/user/homepage/poll/delete", name="poll_delete", methods={"GET", "POST"})
      */
     public function pollDelete(Request $request, PollsRepository $pollsRepository) {
         // prevent accessing the route without priviledge protection
 
-        // trag numele articolului pe care vreu sa l sterg
+        // trag numele articolului pe care vreau sa l sterg
         $toDelete = $request->get("target");
 
         // selectez row-ul de sters in variabila now
@@ -190,28 +199,70 @@ class UsersController extends AbstractController
         return new Response("done");
     }
 
+
+
     /**
      * @Route("/user/homepage/poll/vote/{vote}/{poll}", name="poll_vote", methods={"GET", "POST"})
      */
-    public function vote(Session $session, Request $request, $vote, UsersRepository $usersRepository, PollsService $pollsService, PollsRepository $pollsRepository, VotesRepository $votesRepository, $poll) : Response {
+    public function vote(Session $session, Request $request, $vote, UsersRepository $usersRepository, PollsService $pollsService, PollsRepository $pollsRepository, VotesRepository $votesRepository, $poll, VotesService $voteService) : Response {
         // prevent accessing the route without priviledge protection
 
 
-        // pull data from post request
-        $poll_id = $poll; // poll id
-        $user_id = $session->get("user_id");  // actor of vote
+            // pull data from post request
+            $poll_id = $poll; // poll id
+            $user_id = $session->get("user_id");  // actor of vote
 
-        // perform voting
-        $operation_status = 0;
-        try {
-            $operation_status = $pollsService->vote($this->entityManager, $vote, $poll_id, $user_id, $pollsRepository, $votesRepository);
-        }
-        catch (\Exception $e) {
-            echo 'Caught exception: ',  $e->getMessage(), "\n";
-        }
+            // perform voting
+            try {
+                $pollsService->vote($this->entityManager, $vote, $poll_id, $user_id, $pollsRepository, $votesRepository, $usersRepository, $voteService);
+            }
+            catch (\Exception $e) {
+                echo 'Caught exception: ',  $e->getMessage(), "\n";
+            }
 
-        // response
-        if($operation_status == 0) return new Response("You already voted!");
-        else return new Response("Your vote was saved!");
+            return $this->redirectToRoute("pollView");
+            //return new Response("Clicked");
+
+    }
+
+
+
+    /**
+     * @Route("/user/homepage/poll/display", name="pollView", methods={"GET", "POST"})
+     */
+    public function display(VotesService $votesService, VotesRepository $votesRepository, PollsRepository $pollsRepository, Session $session, UsersRepository $usersRepository) {
+        // prevent accessing the route without priviledge protection
+
+        // get polls from database with status active
+        $polls = $pollsRepository->findBy(["status" => 1]);
+        $result = array();
+        foreach ($polls as $poll) {
+          $now = array();
+          $now["id"] =  $poll->getId();
+          $now["title"] = $poll->getTitle();
+          $now["yes"] = $poll->getYesVote();
+          $now["no"] = $poll->getNoVote();
+          // 1-> didn t voted           2-> vote yes           3->vote no
+          if ($votesRepository->findOneBy(["polls" => $poll->getId(), "users" => $session->get("user_id")]) == null) {
+              // inca nu a votat
+              $now["voted"] = 1;
+          }
+          else {
+              $vot = $votesRepository->findOneBy(["users" => $session->get("user_id"), "polls" => $poll->getId()]);
+              if($vot->getVote() == 0) $now["voted"] = 3;
+              else $now["voted"] = 2;
+              /* AUR
+              if($user){
+                  dd($user->getVotes()->getValues());
+              }
+              */
+          }
+          array_push($result, $now);
+
+        }
+        $options = array('polls'=>$result);
+        return $this->render(__FUNCTION__.".html.twig",$options);
+        // structure vote_name, vote_results, if you can vote add buttons else display vote
+
     }
 }

@@ -19,45 +19,23 @@ class Votes
     /**
      * @ORM\Column(type="integer")
      */
-    private $pollId;
-
-    /**
-     * @ORM\Column(type="integer")
-     */
-    private $personId;
-
-    /**
-     * @ORM\Column(type="integer")
-     */
     private $vote;
+
+    /**
+     * @ORM\ManyToOne(targetEntity="App\Entity\Polls", inversedBy="votes")
+     * @ORM\JoinColumn(nullable=false)
+     */
+    private $polls;
+
+    /**
+     * @ORM\ManyToOne(targetEntity="App\Entity\Users", inversedBy="votes")
+     * @ORM\JoinColumn(nullable=false)
+     */
+    private $users;
 
     public function getId(): ?int
     {
         return $this->id;
-    }
-
-    public function getPollId(): ?int
-    {
-        return $this->pollId;
-    }
-
-    public function setPollId(int $pollId): self
-    {
-        $this->pollId = $pollId;
-
-        return $this;
-    }
-
-    public function getPersonId(): ?int
-    {
-        return $this->personId;
-    }
-
-    public function setPersonId(int $personId): self
-    {
-        $this->personId = $personId;
-
-        return $this;
     }
 
     public function getVote(): ?int
@@ -68,6 +46,30 @@ class Votes
     public function setVote(int $vote): self
     {
         $this->vote = $vote;
+
+        return $this;
+    }
+
+    public function getPolls(): ?Polls
+    {
+        return $this->polls;
+    }
+
+    public function setPolls(?Polls $polls): self
+    {
+        $this->polls = $polls;
+
+        return $this;
+    }
+
+    public function getUsers(): ?Users
+    {
+        return $this->users;
+    }
+
+    public function setUsers(?Users $users): self
+    {
+        $this->users = $users;
 
         return $this;
     }
