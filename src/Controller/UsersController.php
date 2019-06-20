@@ -6,6 +6,7 @@ use App\Entity\Polls;
 use App\Entity\Users;
 use App\Repository\PollsRepository;
 use App\Repository\UsersRepository;
+use App\Repository\VotesRepository;
 use App\Service\PollsService;
 use App\Service\UsersService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -190,15 +191,27 @@ class UsersController extends AbstractController
     }
 
     /**
-     * @Route("/user/homepage/poll/voteYes", name="poll_voteYes", methods={"GET", "POST"})
+     * @Route("/user/homepage/poll/vote/{vote}/{poll}", name="poll_vote", methods={"GET", "POST"})
      */
-    public function voteYes(Request $request) : Response {
+    public function vote(Session $session, Request $request, $vote, UsersRepository $usersRepository, PollsService $pollsService, PollsRepository $pollsRepository, VotesRepository $votesRepository, $poll) : Response {
         // prevent accessing the route without priviledge protection
 
+
         // pull data from post request
-        $pollTitle = $request->get("target");
-        $pollActor = $request->get("actor");
+        $poll_id = $poll; // poll id
+        $user_id = $session->get("user_id");  // actor of vote
 
+        // perform voting
+        $operation_status = 0;
+        try {
+            $operation_status = $pollsService->vote($this->entityManager, $vote, $poll_id, $user_id, $pollsRepository, $votesRepository);
+        }
+        catch (\Exception $e) {
+            echo 'Caught exception: ',  $e->getMessage(), "\n";
+        }
 
+        // response
+        if($operation_status == 0) return new Response("You already voted!");
+        else return new Response("Your vote was saved!");
     }
 }
