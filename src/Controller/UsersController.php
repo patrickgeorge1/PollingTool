@@ -103,24 +103,19 @@ class UsersController extends AbstractController
         // pull data from authentication form
         $email = $request->get("email");
         $password = sha1($request->get("password"));
-        $isAdmin = $request->get("isAdmin");
-        $adminCheck = 0;
 
-        // check role type admin or common user
-        if ($isAdmin === "on") {
-            $adminCheck = 1;
-        }
 
 
         // search database for login info
-        $login_result = $usersRepository->findOneBy(["email"=>$email, "password"=>$password, "isAdmin"=>$adminCheck]);
+        $login_result = $usersRepository->findOneBy(["email"=>$email, "password"=>$password]);
         if ($login_result == null) {
             return new Response("User Inexistent");
         }
         else {
             $session->set('user_id', $login_result->getId());
-            $session->set('user_email', $login_result->getEmail())  ;
-            return $this->redirectToRoute("homepage");
+            $session->set('user_email', $login_result->getEmail());
+            if ($login_result->getIsAdmin()) return $this->redirectToRoute("homepage_admin");
+            else return $this->redirectToRoute("pollView");
         }  // succesfully logged
     }
 
@@ -144,11 +139,63 @@ class UsersController extends AbstractController
     }
 
 
+
+
+    /**
+     * @Route("/user/homepage/admin", name="homepage_admin", methods={"GET", "POST"})
+     *
+     */
+    public function homepageAdmin(PollsRepository $pollsRepository, VotesRepository $votesRepository, VotesService $votesService, UsersRepository $usersRepository, Session $session) {
+        // prevent accessing the route without priviledge protection
+        if($session->get('user_id') && $session->get('user_email')) {
+            $login_status = $usersRepository->findOneBy(["id"=>$session->get('user_id'), "email"=>$session->get('user_email')]);
+            if($login_status == null) return $this->redirectToRoute("home");
+        }
+        else return $this->redirectToRoute("home");
+
+
+        // get data as admin
+        $polls = $pollsRepository->findAll();
+        $result = array();
+        foreach ($polls as $poll) {
+            $now = array();
+            $now["id"] =  $poll->getId();
+            $now["title"] = $poll->getTitle();
+            $now["yes"] = $poll->getYesVote();
+            $now["no"] = $poll->getNoVote();
+            $now["status"] = $poll->getStatus();
+            // 1-> didn t voted           2-> vote yes           3->vote no
+            if ($votesRepository->findOneBy(["polls" => $poll->getId(), "users" => $session->get("user_id")]) == null) {
+                // inca nu a votat
+                $now["voted"] = 1;
+            }
+            else {
+                $vot = $votesRepository->findOneBy(["users" => $session->get("user_id"), "polls" => $poll->getId()]);
+                if($vot->getVote() == 0) $now["voted"] = 3;
+                else $now["voted"] = 2;
+                /* AUR
+                if($user){
+                    dd($user->getVotes()->getValues());
+                }
+                */
+            }
+            array_push($result, $now);
+
+        }
+        $options = array('polls'=>$result);
+        return $this->render("homepageAdmin.html.twig",$options);
+    }
+
+
     /**
      * @Route("/user/homepage/poll/create", name="poll_create", methods={"GET", "POST"})
      */
     public function pollCreate(PollsRepository $pollsRepository, Session $session, Request $request, UsersRepository $usersRepository) : Response {
         // prevent accessing the route without priviledge protection
+        if($session->get('user_id') && $session->get('user_email')) {
+            $login_status = $usersRepository->findOneBy(["id"=>$session->get('user_id'), "email"=>$session->get('user_email')]);
+            if($login_status == null) return $this->redirectToRoute("home");
+        }
 
         // add a basic pool
         $title = $request->get('title');
@@ -173,30 +220,39 @@ class UsersController extends AbstractController
             $this->entityManager->persist($newPoll);
             $this->entityManager->flush();
         }
-        else return new Response("This poll already exists !");
-        return new Response("Poll ".$title." has been created!");
+        else return new Response("Already a poll with the same name");
+        return $this->redirectToRoute("homepage_admin");
     }
 
 
 
     /**
-     * @Route("/user/homepage/poll/delete", name="poll_delete", methods={"GET", "POST"})
+     * @Route("/user/homepage/poll/delete/{target}", name="poll_delete", methods={"GET", "POST"})
      */
-    public function pollDelete(Request $request, PollsRepository $pollsRepository) {
+    public function pollDelete($target, Request $request, PollsRepository $pollsRepository, VotesRepository $votesRepository, Session $session, UsersRepository $usersRepository) {
         // prevent accessing the route without priviledge protection
-
-        // trag numele articolului pe care vreau sa l sterg
-        $toDelete = $request->get("target");
+        if($session->get('user_id') && $session->get('user_email')) {
+            $login_status = $usersRepository->findOneBy(["id"=>$session->get('user_id'), "email"=>$session->get('user_email')]);
+            if($login_status == null) return $this->redirectToRoute("home");
+        }
 
         // selectez row-ul de sters in variabila now
-        $now = $pollsRepository->findOneBy(["title" => $toDelete]);
+        $now = $pollsRepository->findOneBy(["id" => $target]);
 
-        // sterg
+        // sterg voruri din db
+        $poll_id = $now->getId();
+        $votes = $votesRepository->findBy(["polls" => $poll_id]);
+        foreach ($votes as $single) {
+            $this->entityManager->remove($single);
+        }
+
+
+        // sterg poll din db
         if ($now != null) {
             $this->entityManager->remove($now);
             $this->entityManager->flush();
-        } else return new Response("Nothing to be done");
-        return new Response("done");
+        }
+        return $this->redirectToRoute("homepage_admin");
     }
 
 
@@ -206,6 +262,10 @@ class UsersController extends AbstractController
      */
     public function vote(Session $session, Request $request, $vote, UsersRepository $usersRepository, PollsService $pollsService, PollsRepository $pollsRepository, VotesRepository $votesRepository, $poll, VotesService $voteService) : Response {
         // prevent accessing the route without priviledge protection
+        if($session->get('user_id') && $session->get('user_email')) {
+            $login_status = $usersRepository->findOneBy(["id"=>$session->get('user_id'), "email"=>$session->get('user_email')]);
+            if($login_status == null) return $this->redirectToRoute("home");
+        }
 
 
             // pull data from post request
@@ -232,6 +292,10 @@ class UsersController extends AbstractController
      */
     public function display(VotesService $votesService, VotesRepository $votesRepository, PollsRepository $pollsRepository, Session $session, UsersRepository $usersRepository) {
         // prevent accessing the route without priviledge protection
+        if($session->get('user_id') && $session->get('user_email')) {
+            $login_status = $usersRepository->findOneBy(["id"=>$session->get('user_id'), "email"=>$session->get('user_email')]);
+            if($login_status == null) return $this->redirectToRoute("home");
+        }
 
         // get polls from database with status active
         $polls = $pollsRepository->findBy(["status" => 1]);
